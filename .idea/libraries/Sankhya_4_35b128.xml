@@ -1,0 +1,11 @@
+<component name="libraryTable">
+  <library name="Sankhya 4.35b128">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/../../../Java/API - Sankhya/jape-4.35b128.jar!/" />
+      <root url="jar://$PROJECT_DIR$/../../../Java/API - Sankhya/mge-modelcore-4.35b128.jar!/" />
+      <root url="jar://$PROJECT_DIR$/../../../Java/API - Sankhya/sanws-4.35b128.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
