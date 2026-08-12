@@ -94,11 +94,11 @@ public class EnvioEmail implements EventoProgramavelJava {
                     "NF_" + nuNota + ".pdf",
                     "application/pdf"
             );
-            email.addAnexo(
+            /*email.addAnexo(
                     new ByteArrayInputStream(xml),
                     "nfe_" + nuNota + ".xml",
                     "text/xml"
-            );
+            );*/
 
             FilaMsgUtil.enviaEmail(dwfFacade, email);
 
