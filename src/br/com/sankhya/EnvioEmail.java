@@ -4,12 +4,14 @@ import br.com.sankhya.extensions.eventoprogramavel.EventoProgramavelJava;
 import br.com.sankhya.jape.EntityFacade;
 import br.com.sankhya.jape.core.JapeSession;
 import br.com.sankhya.jape.dao.JdbcWrapper;
+import br.com.sankhya.jape.event.ModifingFields;
 import br.com.sankhya.jape.event.PersistenceEvent;
 import br.com.sankhya.jape.event.TransactionContext;
 import br.com.sankhya.jape.sql.NativeSql;
 import br.com.sankhya.jape.vo.DynamicVO;
 import br.com.sankhya.jape.wrapper.JapeFactory;
 import br.com.sankhya.jape.wrapper.JapeWrapper;
+import br.com.sankhya.modelcore.comercial.AtributosRegras;
 import br.com.sankhya.modelcore.util.AgendamentoRelatorioHelper;
 import br.com.sankhya.modelcore.util.DynamicEntityNames;
 import br.com.sankhya.modelcore.util.EntityFacadeFactory;
@@ -36,11 +38,28 @@ public class EnvioEmail implements EventoProgramavelJava {
 
     @Override
     public void afterUpdate(PersistenceEvent event) throws Exception {
+    }
+
+    @Override
+    public void beforeUpdate(PersistenceEvent event) throws Exception {
         DynamicVO newCabVO = (DynamicVO) event.getVo();
         DynamicVO oldCabVO = (DynamicVO) event.getOldVO();
 
+        ModifingFields modFields = event.getModifingFields();
+
+        if (JapeSession.getProperty(AtributosRegras.APROVANDO) == null)
+            return;
+
+        if (modFields.isModifing("AD_OBSPARCCOMERCIAL"))
+            throw new Exception("Obs da nota se modificou. Antigo: " + oldCabVO.asString("AD_OBSPARCCOMERCIAL") + " Novo: " + newCabVO.asString("AD_OBSPARCCOMERCIAL"));
+
+        /*if (newCabVO != null)
+            throw new Exception("Status novo " + (String) modFields.getNewValue("PENDENTE") + " Antigo: " +  (String) modFields.getOldValue("PENDENTE"));*/
         // Verifica se a nota foi aprovada.
-        if (!(oldCabVO.asString("STATUSNFE").equals(newCabVO.asString("STATUSNFE"))) && newCabVO.asString("STATUSNFE").equals("A")) {
+        //if (!(oldCabVO.asString("STATUSNFE").equals(newCabVO.asString("STATUSNFE"))) && newCabVO.asString("STATUSNFE").equals("A")) {
+        //if (!(oldCabVO.asString("STATUSNOTA").equals(newCabVO.asString("STATUSNOTA"))) && newCabVO.asString("STATUSNOTA").equals("L")) { //TESTE
+        if (!(newCabVO.asBigDecimal("CODPARC").equals(new BigDecimal(41011)))) return;
+
             BigDecimal nuNota = newCabVO.asBigDecimal("NUNOTA");
             BigDecimal codUsu = newCabVO.asBigDecimal("CODUSU");
             BigDecimal codParc = newCabVO.asBigDecimal("CODPARC");
@@ -61,6 +80,9 @@ public class EnvioEmail implements EventoProgramavelJava {
 
             byte[] pdf = AgendamentoRelatorioHelper.getPrintableReport(nuRfe, params, codUsu, dwfFacade);
 
+            // Obtém XML
+
+
             // Envia e-mail
             FilaMsgUtil.Email email = new FilaMsgUtil.Email();
 
@@ -72,10 +94,15 @@ public class EnvioEmail implements EventoProgramavelJava {
                     "NF_" + nuNota + ".pdf",
                     "application/pdf"
             );
+            email.addAnexo(
+                    new ByteArrayInputStream(xml),
+                    "nfe_" + nuNota + ".xml",
+                    "text/xml"
+            );
 
             FilaMsgUtil.enviaEmail(dwfFacade, email);
 
-        }
+        //}
     }
 
     private BigDecimal getNumeroRelatorio(BigDecimal nuNota) throws Exception {
@@ -118,11 +145,6 @@ public class EnvioEmail implements EventoProgramavelJava {
 
     @Override
     public void beforeInsert(PersistenceEvent event) throws Exception {
-
-    }
-
-    @Override
-    public void beforeUpdate(PersistenceEvent event) throws Exception {
 
     }
 
