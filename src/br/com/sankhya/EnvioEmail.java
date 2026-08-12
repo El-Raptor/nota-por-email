@@ -19,6 +19,7 @@ import br.com.sankhya.modelcore.util.email.FilaMsgUtil;
 
 import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.List;
@@ -43,66 +44,56 @@ public class EnvioEmail implements EventoProgramavelJava {
     @Override
     public void beforeUpdate(PersistenceEvent event) throws Exception {
         DynamicVO newCabVO = (DynamicVO) event.getVo();
-        DynamicVO oldCabVO = (DynamicVO) event.getOldVO();
 
-        ModifingFields modFields = event.getModifingFields();
+        /*if (JapeSession.getProperty(AtributosRegras.APROVANDO) == null)
+            return;*/
 
-        if (JapeSession.getProperty(AtributosRegras.APROVANDO) == null)
-            return;
-
-        if (modFields.isModifing("AD_OBSPARCCOMERCIAL"))
-            throw new Exception("Obs da nota se modificou. Antigo: " + oldCabVO.asString("AD_OBSPARCCOMERCIAL") + " Novo: " + newCabVO.asString("AD_OBSPARCCOMERCIAL"));
-
-        /*if (newCabVO != null)
-            throw new Exception("Status novo " + (String) modFields.getNewValue("PENDENTE") + " Antigo: " +  (String) modFields.getOldValue("PENDENTE"));*/
         // Verifica se a nota foi aprovada.
-        //if (!(oldCabVO.asString("STATUSNFE").equals(newCabVO.asString("STATUSNFE"))) && newCabVO.asString("STATUSNFE").equals("A")) {
-        //if (!(oldCabVO.asString("STATUSNOTA").equals(newCabVO.asString("STATUSNOTA"))) && newCabVO.asString("STATUSNOTA").equals("L")) { //TESTE
+
         if (!(newCabVO.asBigDecimal("CODPARC").equals(new BigDecimal(41011)))) return;
 
-            BigDecimal nuNota = newCabVO.asBigDecimal("NUNOTA");
-            BigDecimal codUsu = newCabVO.asBigDecimal("CODUSU");
-            BigDecimal codParc = newCabVO.asBigDecimal("CODPARC");
-            BigDecimal nuRfe = getNumeroRelatorio(nuNota);
+        BigDecimal nuNota = newCabVO.asBigDecimal("NUNOTA");
+        BigDecimal codUsu = newCabVO.asBigDecimal("CODUSU");
+        BigDecimal codParc = newCabVO.asBigDecimal("CODPARC");
+        BigDecimal nuRfe = getNumeroRelatorio(nuNota);
 
-            JapeWrapper parceiroDAO = JapeFactory.dao(DynamicEntityNames.PARCEIRO);
-            DynamicVO parceiroVO = parceiroDAO.findByPK(codParc);
+        JapeWrapper parceiroDAO = JapeFactory.dao(DynamicEntityNames.PARCEIRO);
+        DynamicVO parceiroVO = parceiroDAO.findByPK(codParc);
 
-            // Gera o relatório
-            AgendamentoRelatorioHelper.ParametroRelatorio param = new AgendamentoRelatorioHelper.ParametroRelatorio(
-                    "NUNOTA", BigDecimal.class.getName(), nuNota
-            );
+        // Gera o relatório
+        AgendamentoRelatorioHelper.ParametroRelatorio param = new AgendamentoRelatorioHelper.ParametroRelatorio(
+                "NUNOTA", BigDecimal.class.getName(), nuNota
+        );
 
-            List<AgendamentoRelatorioHelper.ParametroRelatorio> params = new ArrayList<>();
-            params.add(param);
+        List<AgendamentoRelatorioHelper.ParametroRelatorio> params = new ArrayList<>();
+        params.add(param);
 
-            EntityFacade dwfFacade = EntityFacadeFactory.getDWFFacade();
+        EntityFacade dwfFacade = EntityFacadeFactory.getDWFFacade();
 
-            byte[] pdf = AgendamentoRelatorioHelper.getPrintableReport(nuRfe, params, codUsu, dwfFacade);
+        byte[] pdf = AgendamentoRelatorioHelper.getPrintableReport(nuRfe, params, codUsu, dwfFacade);
 
-            // Obtém XML
+        // Obtém XML
+        String xml = getXml(nuNota);
 
+        // Envia e-mail
+        FilaMsgUtil.Email email = new FilaMsgUtil.Email();
 
-            // Envia e-mail
-            FilaMsgUtil.Email email = new FilaMsgUtil.Email();
+        email.setAssunto("Teste inicial");
+        email.setMensagem("Segue a nota fiscal em anexo");
+        email.setDestinatarios(parceiroVO.asString("EMAIL"));
+        email.addAnexo(
+                new ByteArrayInputStream(pdf),
+                "NF_" + nuNota + ".pdf",
+                "application/pdf"
+        );
+        email.addAnexo(
+                new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)),
+                "nfe_" + nuNota + ".xml",
+                "text/xml"
+        );
 
-            email.setAssunto("Teste inicial");
-            email.setMensagem("Segue a nota fiscal em anexo");
-            email.setDestinatarios(parceiroVO.asString("EMAIL"));
-            email.addAnexo(
-                    new ByteArrayInputStream(pdf),
-                    "NF_" + nuNota + ".pdf",
-                    "application/pdf"
-            );
-            /*email.addAnexo(
-                    new ByteArrayInputStream(xml),
-                    "nfe_" + nuNota + ".xml",
-                    "text/xml"
-            );*/
+        FilaMsgUtil.enviaEmail(dwfFacade, email);
 
-            FilaMsgUtil.enviaEmail(dwfFacade, email);
-
-        //}
     }
 
     private BigDecimal getNumeroRelatorio(BigDecimal nuNota) throws Exception {
@@ -132,6 +123,41 @@ public class EnvioEmail implements EventoProgramavelJava {
 
             if (rset.next()) {
                 return rset.getBigDecimal("NURFE");
+            }
+        } catch (Exception e) {
+            throw new Exception(e.getMessage());
+        } finally {
+            NativeSql.releaseResources(nativeSql);
+            JdbcWrapper.closeSession(jdbc);
+            JapeSession.close(sessionHandle);
+        }
+        return null;
+    }
+
+    private String getXml(BigDecimal nuNota) throws Exception {
+        JdbcWrapper jdbc = null;
+        NativeSql nativeSql = null;
+        ResultSet rset = null;
+        JapeSession.SessionHandle sessionHandle = null;
+
+        try {
+            sessionHandle = JapeSession.open();
+            EntityFacade entity = EntityFacadeFactory.getDWFFacade();
+            jdbc = entity.getJdbcWrapper();
+            jdbc.openSession();
+
+            nativeSql = new NativeSql(jdbc);
+
+            nativeSql.appendSql("SELECT NFE.XML ");
+            nativeSql.appendSql("  FROM TGFNFE NFE");
+            nativeSql.appendSql(" WHERE NFE.NUNOTA = :NUNOTA");
+
+            nativeSql.setNamedParameter("NUNOTA", new BigDecimal(54520));
+
+            rset = nativeSql.executeQuery();
+
+            if (rset.next()) {
+                return rset.getString("XML");
             }
         } catch (Exception e) {
             throw new Exception(e.getMessage());
